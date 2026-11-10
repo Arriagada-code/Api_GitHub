@@ -1,64 +1,177 @@
 ANALISIS DE ERRORES - Analisis_github.py
-Fecha: 2026-11-05
+Fecha de revision: 2026-11-10
 
-Resumen
--------
-El archivo no presenta errores de sintaxis detectados. Sin embargo, las pruebas
-de pytest no alcanzan a ejecutarse porque importar el modulo inicia una
-solicitud de entrada interactiva. Tambien hay manejo de errores que oculta las
-fallas de ejecucion.
+ALCANCE Y METODO
+----------------
+Se reviso el contenido actual de Analisis_github.py sin modificarlo ni hacer
+una solicitud real a GitHub.
 
-1. Errores de sintaxis
-----------------------
-No se detectaron errores de sintaxis en Analisis_github.py.
+Comprobaciones realizadas:
+- Pylance no encontro errores de sintaxis.
+- Pylance no reporto diagnosticos para este archivo.
+- El import de requests se resuelve en el entorno analizado.
+- No se probo la conexion, la credencial ni la respuesta real de GitHub.
 
-2. Errores y riesgos de ejecucion
----------------------------------
+Que el archivo pase la revision de sintaxis no garantiza que funcione en
+ejecucion. Los problemas de HTTP, red, permisos y sistema de archivos descritos
+abajo son riesgos derivados del codigo y no errores reproducidos.
 
-2.1. Entrada interactiva al importar el modulo (linea 23)
-Al importar Analisis_github.py se ejecuta input(). Esto impide que pytest
-importe el modulo durante la recoleccion de pruebas.
 
-Resultado observado al ejecutar:
-    python -m pytest -q test_Analisis_github.py
+1. CREDENCIAL ESCRITA DIRECTAMENTE EN EL CODIGO (linea 4) - PRIORIDAD ALTA
+---------------------------------------------------------------------------
+La variable TOKEN contiene un texto con apariencia de token. No se puede
+confirmar por inspeccion si es una credencial valida o un ejemplo. Por
+seguridad, este informe no reproduce su contenido.
 
-Pytest termina durante la recoleccion con:
-    OSError: pytest: reading from stdin while output is captured!
+Riesgo: si fuera una credencial real, quien tenga acceso al archivo o al
+historial del repositorio podria usarla, segun sus permisos.
 
-Las pruebas no llegan a ejecutarse.
+Accion recomendada: si el valor es real o pudo ser real, revocarlo en GitHub y
+crear una credencial nueva. Leer el token desde una variable de entorno, no
+guardarlo en el codigo, y no subirlo al repositorio. Quitar el secreto de la
+version actual del archivo no lo elimina de commits anteriores.
 
-2.2. Excepciones silenciadas (lineas 37-38)
-El bloque except Exception: pass captura errores y no muestra informacion.
-Una falla en la solicitud HTTP, en el procesamiento de los datos o al guardar
-el archivo puede pasar inadvertida. Esto dificulta diagnosticar el problema.
 
-2.3. No se valida la respuesta HTTP ni su estructura (lineas 13-15)
-El codigo lee respuesta.json() sin comprobar el codigo de estado HTTP ni
-confirmar que la respuesta sea una lista de repositorios. Una respuesta de
-error de GitHub podria tener una estructura distinta y causar una excepcion
-al procesarla.
+2. LOS REPOSITORIOS PRIVADOS NO SE OBTIENEN CON ESTA RUTA (lineas 9-11)
+-----------------------------------------------------------------------
+La ruta /users/{usuario}/repos consulta repositorios publicos del usuario.
+El encabezado con token no cambia esa ruta a la lista de repositorios privados
+del usuario autenticado. Por tanto, si el objetivo incluye repositorios
+privados propios, el programa no cumple ese objetivo aunque la consulta pueda
+terminar correctamente.
 
-2.4. La solicitud no establece un tiempo limite (linea 13)
-Si la conexion tarda demasiado o no responde, la ejecucion puede quedarse
-esperando durante un tiempo prolongado.
+Accion recomendada: usar el endpoint autenticado apropiado para listar los
+repositorios de la cuenta autenticada y conceder al token los permisos
+necesarios. No se verificaron permisos ni credenciales reales.
 
-2.5. No se maneja la paginacion (linea 13)
-La consulta puede devolver solo una pagina de repositorios. Si el usuario
-tiene mas resultados, el archivo generado podria no incluirlos todos.
 
-3. Seguridad
-------------
-La revision no encontro vulnerabilidades explotables confirmadas.
+3. ESTADO HTTP NO COMPROBADO (lineas 14-15)
+-------------------------------------------
+El codigo llama a respuesta.json() directamente y no llama a
+respuesta.raise_for_status(). Una respuesta 401, 403, 404 o 500 no se maneja
+explicitamente como error HTTP. GitHub puede devolver un JSON de error en vez
+de una lista de repositorios.
 
-El archivo contiene un valor asignado a TOKEN (linea 4), que parece ser un
-marcador de ejemplo y no una credencial valida. Si se reemplaza por un token
-real, no se debe guardar ni compartir directamente en el codigo. Si una
-credencial real ya fue expuesta, debe revocarse.
+Consecuencia posible: el procesamiento posterior recibe una estructura
+distinta de la esperada y falla o muestra resultados incorrectos.
 
-Conclusión
+Accion recomendada: comprobar el estado HTTP antes de procesar el JSON y
+presentar un mensaje especifico para la respuesta de error.
+
+
+4. ESTRUCTURA JSON NO VALIDADA (lineas 15 y 29-35)
+--------------------------------------------------
+No se comprueba que respuesta.json() sea una lista ni que sus elementos sean
+objetos con los campos esperados. Una respuesta de error o un cambio inesperado
+puede producir errores al iterar o llamar .get().
+
+El campo language tambien puede ser null si GitHub no detecta un lenguaje
+principal; esto es un valor valido de la API, no necesariamente un fallo.
+
+
+5. SIN TIEMPO LIMITE NI MANEJO EXPLICITO DE ERRORES DE CONEXION (linea 14)
+--------------------------------------------------------------------------
+requests.get no incluye timeout. Una conexion lenta o que no responde puede
+mantener el programa esperando durante demasiado tiempo.
+
+Tampoco se distinguen errores como Timeout, ConnectionError u otros
+RequestException. El except generico los oculta junto con errores de
+programacion.
+
+Accion recomendada: fijar un timeout y capturar errores de requests de forma
+especifica, mostrando mensajes utiles sin revelar la credencial.
+
+
+6. NO SE RECORREN TODAS LAS PAGINAS DE RESULTADOS (linea 14)
+------------------------------------------------------------
+La API pagina los resultados. El programa hace una sola solicitud y no pide
+paginas posteriores; si hay mas resultados que los incluidos en esa respuesta,
+el resumen y el JSON pueden quedar incompletos.
+
+Accion recomendada: implementar paginacion si se necesita obtener todos los
+repositorios.
+
+
+7. NOMBRE DE USUARIO NO VALIDADO NI CODIFICADO EN LA URL (lineas 9 y 24)
+-----------------------------------------------------------------------
+El valor de input se concatena directamente en la URL. No se rechaza una
+entrada vacia ni se codifican caracteres especiales.
+
+Consecuencia posible: nombre vacio, espacios u otros caracteres pueden causar
+una URL no valida o una solicitud que no corresponde a lo esperado.
+
+Accion recomendada: quitar espacios externos, validar que el nombre no este
+vacio y codificar el segmento de URL.
+
+
+8. EL FLUJO PRINCIPAL SE EJECUTA AL IMPORTAR EL MODULO (lineas 24-41)
+--------------------------------------------------------------------
+input() y la consulta se ejecutan directamente al cargar el archivo. Esto
+dificulta importar las funciones desde pruebas u otros modulos. En pytest, la
+lectura de stdin durante la recoleccion puede fallar con un error como
+"pytest: reading from stdin while output is captured".
+
+Accion recomendada: colocar el flujo principal en una funcion main() y
+ejecutarla bajo el control:
+
+    if __name__ == "__main__":
+        main()
+
+
+9. TODOS LOS ERRORES SE SILENCIAN (lineas 26-39)
+-------------------------------------------------
+except Exception: pass captura cualquier excepcion y no muestra ni registra
+su causa. Puede ocultar errores de red, HTTP, conversion JSON, procesamiento
+de datos o escritura del archivo, asi como errores de programacion.
+
+Luego se imprime "Proceso terminado." incluso si algo fallo, lo que puede dar
+la impresion de que la operacion tuvo exito.
+
+Accion recomendada: capturar excepciones esperadas por separado, mostrar
+mensajes comprensibles y devolver un estado de error cuando corresponda. No
+usar pass como manejo general.
+
+
+10. RIESGOS AL GUARDAR EL ARCHIVO JSON (lineas 19-21 y 36)
+---------------------------------------------------------
+open(archivo, 'w') crea el archivo si no existe, pero sobrescribe su contenido
+si ya existe. 'repositorios.json' es una ruta relativa al directorio desde el
+que se ejecuto Python, que podria ser distinto de la carpeta del script.
+
+Sin permiso de escritura, open puede generar PermissionError. Una ruta
+inaccesible u otro problema del sistema puede generar OSError. Estos errores
+tambien quedan ocultos por el except Exception: pass.
+
+Accion recomendada: definir e informar una ruta de salida clara y manejar
+errores de escritura con un mensaje visible. Confirmar si se desea reemplazar
+el archivo previo.
+
+
+11. INFORMACION LIMITADA EN EL RESUMEN (lineas 30-35)
+----------------------------------------------------
+El archivo generado contiene nombre, lenguaje y estrellas. No guarda
+descripcion ni indica si el repositorio es publico o privado. Esto no es un
+error de sintaxis, sino una limitacion funcional si se esperaba mostrar esos
+datos.
+
+
+RESUMEN DE PRIORIDAD
+--------------------
+1. Revisar la credencial de la linea 4. Si es real o pudo ser valida,
+   revocarla y reemplazarla; mantenerla fuera del codigo y del historial.
+2. Si se necesitan repositorios privados, usar el endpoint autenticado
+   adecuado y permisos de token correctos.
+3. Dejar de silenciar excepciones; validar HTTP y estructura JSON.
+4. Agregar timeout y manejo explicito de errores de conexion.
+5. Agregar paginacion si se requiere el listado completo.
+6. Evitar ejecutar input al importar; validar el usuario y mejorar el manejo
+   de la ruta y los errores de escritura.
+
+CONCLUSION
 ----------
-El problema confirmado que impide ejecutar las pruebas es que input() se
-ejecuta al importar el modulo. Ademas, las excepciones se ocultan, por lo que
-otros problemas pueden ocurrir sin que el usuario vea su causa.
-
-Este documento describe los hallazgos; no modifica Analisis_github.py.
+No se detectaron errores de sintaxis en la revision estatica. Los principales
+riesgos son la credencial escrita en el codigo, la falta de validacion de la
+respuesta HTTP, la ausencia de timeout, el manejo de errores silencioso y la
+limitacion de la ruta consultada a repositorios publicos. No se ejecuto una
+consulta real a GitHub, por lo que esos riesgos no se presentan como fallos
+reproducidos.
