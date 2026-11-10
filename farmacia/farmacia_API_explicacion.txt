@@ -1,0 +1,229 @@
+EXPLICACION DEL PROGRAMA DE FARMACIAS DE TURNO
+================================================
+
+Este programa consulta una API del Ministerio de Salud de Chile, filtra las
+farmacias de turno de una comuna, muestra los resultados en una tabla y los
+agrega a un archivo CSV llamado farmacias_turno.csv.
+
+
+1. LIBRERIAS IMPORTADAS
+-----------------------
+
+csv
+    Libreria incluida con Python para crear y leer archivos CSV (valores
+    separados por comas). En este programa se usa csv.DictWriter para escribir
+    filas usando diccionarios y para producir el encabezado del archivo.
+
+datetime
+    Modulo incluido con Python para trabajar con fechas y horas. Se usa
+    datetime.strptime para interpretar la fecha y la hora de apertura recibidas
+    desde la API, y strftime para convertirlas al formato que se guarda.
+
+os
+    Modulo incluido con Python para trabajar con rutas y archivos del sistema.
+    os.path.join construye la ruta al CSV; os.path.dirname(__file__) localiza
+    la carpeta donde esta este programa; os.path.exists comprueba si el CSV
+    ya existe; os.path.basename obtiene el nombre del archivo para mostrarlo.
+
+requests
+    Libreria externa que permite realizar solicitudes HTTP. Se usa para
+    consultar la API con requests.get, comprobar la respuesta con
+    raise_for_status y convertir el contenido JSON con response.json().
+
+tabulate
+    Libreria externa que da formato de tabla al texto mostrado en la terminal.
+    tabulate recibe la lista de farmacias, usa las claves de cada diccionario
+    como encabezados (headers="keys") y dibuja una tabla con tablefmt="grid".
+
+Las librerias csv, datetime y os vienen con Python. requests y tabulate son
+paquetes externos y deben estar instalados en el mismo Python con el que se
+ejecuta el programa.
+
+
+2. INICIO Y CONSULTA DE LA API
+------------------------------
+
+print(...)
+    Muestra mensajes en la terminal.
+
+while True:
+    Inicia un ciclo que permite consultar una comuna y preguntar si se desea
+    realizar otra consulta.
+
+input(...)
+    Solicita al usuario el nombre de la comuna. upper() convierte el texto a
+    mayusculas para compararlo con los nombres recibidos de la API.
+
+requests.get(url, timeout=10)
+    Hace una solicitud GET a la direccion de la API. timeout=10 limita la
+    espera de la solicitud a 10 segundos.
+
+respuesta.raise_for_status()
+    Comprueba el codigo HTTP de la respuesta. Si indica un error HTTP, genera
+    una excepcion HTTPError.
+
+respuesta.json()
+    Interpreta el cuerpo de la respuesta como datos JSON de Python. En este
+    caso se espera una lista de registros de farmacias.
+
+
+3. BLOQUE try/except DE LA SOLICITUD
+------------------------------------
+
+try:
+    Contiene las instrucciones que pueden generar errores al conectarse con
+    la API, comprobar la respuesta o interpretar el JSON.
+
+except:
+    Captura una excepcion que ocurrio dentro del bloque try. Cada except puede
+    manejar un tipo distinto. El programa imprime el detalle del error y
+    asigna farmacias = None para no procesar una respuesta que no se obtuvo
+    correctamente.
+
+Timeout
+    requests.exceptions.Timeout ocurre si la solicitud supera el tiempo limite
+    configurado. El programa informa que la consulta supero los 10 segundos.
+
+HTTPError
+    requests.exceptions.HTTPError ocurre cuando raise_for_status detecta una
+    respuesta HTTP de error, por ejemplo, un estado 404 o 500. El mensaje
+    incluye el detalle que entrega requests.
+
+RequestException
+    requests.exceptions.RequestException es una categoria general de errores
+    de requests, por ejemplo, problemas de conexion o errores durante la
+    solicitud que no fueron capturados por Timeout o HTTPError.
+
+Exception
+    Captura otros errores inesperados que ocurran dentro del bloque try, como
+    un problema al interpretar el JSON. Es una captura de respaldo: conviene
+    mantenerla despues de las excepciones mas especificas para que estas
+    puedan mostrar mensajes mas utiles. No reemplaza la validacion de los
+    datos ni debe usarse para ocultar fallos.
+
+La variable error recibe el objeto de excepcion capturado. La expresion
+{type(error).__name__} muestra el nombre de su tipo, y {error} su descripcion.
+
+
+4. FILTRADO Y FECHA/HORA
+------------------------
+
+if farmacias is not None:
+    Solo procesa los registros si la solicitud y la lectura del JSON tuvieron
+    exito. Si hubo un error, farmacias vale None y se salta este bloque.
+
+for farmacia in farmacias:
+    Recorre uno por uno los registros entregados por la API.
+
+farmacia.get('comuna_nombre', '')
+    Obtiene el nombre de la comuna del registro. Si falta esa clave, usa una
+    cadena vacia. upper() permite comparar sin distinguir mayusculas.
+
+datetime.strptime(...)
+    Combina los campos fecha y funcionamiento_hora_apertura y los convierte
+    en un valor de fecha y hora. El formato "%Y-%m-%d %H:%M:%S" espera un año
+    de cuatro digitos, mes, dia, hora, minutos y segundos.
+
+fecha_hora.strftime(...)
+    Convierte la fecha y hora al texto "AAAA-MM-DD HH:MM:SS" que se guarda en
+    la columna timestamp del CSV.
+
+farmacias_comuna.append({...})
+    Agrega a la lista solo los datos que interesan: timestamp, comuna,
+    local_nombre y direccion.
+
+Si la API entrega un registro con una fecha, hora o clave con formato
+inesperado, el procesamiento de ese registro puede generar un error. El bloque
+try/except actual rodea la solicitud, no el ciclo que procesa los registros.
+
+
+5. TABLA EN LA TERMINAL
+-----------------------
+
+columnas
+    Lista los nombres de las cuatro columnas del CSV.
+
+len(farmacias_comuna)
+    Cuenta cuantas farmacias coinciden con la comuna consultada.
+
+tabulate(farmacias_comuna, headers="keys", tablefmt="grid")
+    Muestra en la terminal los diccionarios de resultados como una tabla con
+    bordes. Si la lista esta vacia, tabulate muestra los encabezados sin filas.
+
+
+6. CREACION Y ESCRITURA DEL CSV
+-------------------------------
+
+archivo_salida
+    os.path.join combina la carpeta del programa con el nombre
+    farmacias_turno.csv. Asi, el archivo se guarda junto al programa.
+
+os.path.exists(archivo_salida)
+    Comprueba si el archivo ya existe antes de abrirlo.
+
+open(archivo_salida, "a", newline="", encoding="utf-8")
+    Abre el archivo en modo "a" (append/agregar). Si no existe, Python lo crea;
+    si ya existe, conserva su contenido y escribe al final.
+
+newline=""
+    Es el valor recomendado por el modulo csv para evitar lineas en blanco
+    adicionales y dejar que csv gestione los saltos de linea.
+
+encoding="utf-8"
+    Guarda el archivo con codificacion UTF-8, que permite representar
+    caracteres acentuados.
+
+csv.DictWriter(..., fieldnames=columnas)
+    Prepara un escritor CSV que toma los valores de cada diccionario segun el
+    orden de fieldnames.
+
+if not archivo_existe:
+    escritor.writeheader() escribe el encabezado solo cuando el archivo aun
+    no existia. Si el CSV existe, no repite el encabezado.
+
+escritor.writerows(farmacias_comuna)
+    Agrega una fila por cada farmacia encontrada. Si no hay resultados, solo
+    escribe el encabezado cuando es la primera creacion del archivo y no agrega
+    filas.
+
+Nota: como el archivo se abre en modo agregar, cada nueva consulta vuelve a
+agregar sus resultados. El programa no elimina ni evita registros repetidos.
+
+
+7. PREGUNTA PARA CONTINUAR Y ValueError
+---------------------------------------
+
+int(input(...))
+    Lee la opcion para continuar e intenta convertirla a un numero entero.
+
+if seguir != 1:
+    Si el valor es distinto de 1, break termina el ciclo principal.
+
+continue
+    Si el valor es 1, empieza la siguiente vuelta del ciclo.
+
+except ValueError:
+    Captura el error que ocurre cuando int(...) no puede convertir lo escrito
+    a un entero, por ejemplo, si el usuario escribe letras. El programa muestra
+    un aviso. El ciclo vuelve a empezar.
+
+Al finalizar el ciclo, print("ADIOS") muestra el mensaje de despedida.
+
+
+8. POR QUE CAPTURAR ERRORES ESPECIFICOS
+---------------------------------------
+
+Capturar Timeout y HTTPError por separado permite reconocer que paso y mostrar
+un mensaje claro para cada caso. Tambien permite cambiar la respuesta del
+programa segun el tipo de error, por ejemplo, informar que se agoto el tiempo
+de espera o que el servidor respondio con un estado HTTP de error.
+
+Un except Exception generico no explica por si solo que fallo. Si se usa solo,
+puede mezclar problemas distintos y hacer mas dificil diagnosticar el origen.
+Por eso se capturan primero Timeout y HTTPError, luego RequestException para
+otros problemas de requests y, al final, Exception como respaldo para errores
+inesperados dentro del bloque try.
+
+En este programa, cada error capturado se muestra en la terminal; no se
+silencia. La asignacion farmacias = None evita que la parte de filtrado intente
+usar datos que no se pudieron obtener.
