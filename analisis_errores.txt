@@ -1,0 +1,64 @@
+ANALISIS DE ERRORES - Analisis_github.py
+Fecha: 2026-11-05
+
+Resumen
+-------
+El archivo no presenta errores de sintaxis detectados. Sin embargo, las pruebas
+de pytest no alcanzan a ejecutarse porque importar el modulo inicia una
+solicitud de entrada interactiva. Tambien hay manejo de errores que oculta las
+fallas de ejecucion.
+
+1. Errores de sintaxis
+----------------------
+No se detectaron errores de sintaxis en Analisis_github.py.
+
+2. Errores y riesgos de ejecucion
+---------------------------------
+
+2.1. Entrada interactiva al importar el modulo (linea 23)
+Al importar Analisis_github.py se ejecuta input(). Esto impide que pytest
+importe el modulo durante la recoleccion de pruebas.
+
+Resultado observado al ejecutar:
+    python -m pytest -q test_Analisis_github.py
+
+Pytest termina durante la recoleccion con:
+    OSError: pytest: reading from stdin while output is captured!
+
+Las pruebas no llegan a ejecutarse.
+
+2.2. Excepciones silenciadas (lineas 37-38)
+El bloque except Exception: pass captura errores y no muestra informacion.
+Una falla en la solicitud HTTP, en el procesamiento de los datos o al guardar
+el archivo puede pasar inadvertida. Esto dificulta diagnosticar el problema.
+
+2.3. No se valida la respuesta HTTP ni su estructura (lineas 13-15)
+El codigo lee respuesta.json() sin comprobar el codigo de estado HTTP ni
+confirmar que la respuesta sea una lista de repositorios. Una respuesta de
+error de GitHub podria tener una estructura distinta y causar una excepcion
+al procesarla.
+
+2.4. La solicitud no establece un tiempo limite (linea 13)
+Si la conexion tarda demasiado o no responde, la ejecucion puede quedarse
+esperando durante un tiempo prolongado.
+
+2.5. No se maneja la paginacion (linea 13)
+La consulta puede devolver solo una pagina de repositorios. Si el usuario
+tiene mas resultados, el archivo generado podria no incluirlos todos.
+
+3. Seguridad
+------------
+La revision no encontro vulnerabilidades explotables confirmadas.
+
+El archivo contiene un valor asignado a TOKEN (linea 4), que parece ser un
+marcador de ejemplo y no una credencial valida. Si se reemplaza por un token
+real, no se debe guardar ni compartir directamente en el codigo. Si una
+credencial real ya fue expuesta, debe revocarse.
+
+Conclusión
+----------
+El problema confirmado que impide ejecutar las pruebas es que input() se
+ejecuta al importar el modulo. Ademas, las excepciones se ocultan, por lo que
+otros problemas pueden ocurrir sin que el usuario vea su causa.
+
+Este documento describe los hallazgos; no modifica Analisis_github.py.
